@@ -17,3 +17,6 @@ web30 = "1.12"
 num-traits = "0.2.19"
 rustls = "0.23"
 hex = "0.4.3"
+# forces the indirect dependency to be bundled and allows
+# easier cross compilation
+openssl = { version = "0.10", features = ["vendored"] }
