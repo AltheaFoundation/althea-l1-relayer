@@ -1,0 +1,19 @@
+[package]
+name = "althea-l1-relayer"
+authors = ["Justin Kilpatrick<justin@althea.net>"]
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+actix-rt = "^2.6"
+actix-web = {version = "4", features = ["rustls-0_23"]}
+awc = {version = "3", features = ["rustls-0_23"]}
+clap = { version = "4.0", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+serde = { version = "1", features = ["derive"] }
+clarity = "1.5.4"
+web30 = "1.12"
+num-traits = "0.2.19"
+rustls = "0.23"
+hex = "0.4.3"
