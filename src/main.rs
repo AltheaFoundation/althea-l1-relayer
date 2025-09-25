@@ -55,10 +55,10 @@ pub struct RelayerOpts {
 
     #[arg(
         long,
-        default_value = "https://eth.althea.net",
-        value_name = "ETH_RPC_URL"
+        default_value = "https://rpc.althea.zone:8545",
+        value_name = "ALTHEA_EVM_RPC",
     )]
-    pub eth_rpc: String,
+    pub alhtea_evm_rpc: String,
 
     #[arg(long, default_value = "5", value_name = "POLL_INTERVAL")]
     pub poll_interval: u64,
@@ -117,7 +117,7 @@ async fn main() {
         .init();
 
     // let transport = web3::transports::Http::new(&opts.eth_rpc).expect("Failed to create HTTP transport");
-    let web3 = Web3::new(&opts.eth_rpc, Duration::from_secs(30));
+    let web3 = Web3::new(&opts.alhtea_evm_rpc, Duration::from_secs(30));
     let private_key = PrivateKey::from_str(&opts.private_key).expect("Invalid private key");
 
     let contract_address =
@@ -125,7 +125,7 @@ async fn main() {
 
     info!("Starting Ambient transaction relayer");
     info!("Orchestrator URLs: {:?}", opts.transaction_api_url);
-    info!("Ethereum RPC: {}", opts.eth_rpc);
+    info!("Ethereum RPC: {}", opts.alhtea_evm_rpc);
     info!("Contract Address: {}", opts.contract_address);
     info!("Poll interval: {} seconds", opts.poll_interval);
     info!("Relayer address: {}", private_key.to_address());
@@ -202,7 +202,7 @@ async fn process_pending_transactions(
     contract_address: Address,
     price_api_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    debug!("Fetching pending transactions from {orchestrator_url}/{RELAYING_SERVICE_ROOT}/pending");
+    info!("Fetching pending transactions from {orchestrator_url}/{RELAYING_SERVICE_ROOT}/pending");
     let url_without_protocol = orchestrator_url
         .strip_prefix("http://")
         .or_else(|| orchestrator_url.strip_prefix("https://"))
