@@ -56,7 +56,7 @@ pub struct RelayerOpts {
     #[arg(
         long,
         default_value = "https://rpc.althea.zone:8545",
-        value_name = "ALTHEA_EVM_RPC",
+        value_name = "ALTHEA_EVM_RPC"
     )]
     pub alhtea_evm_rpc: String,
 
@@ -106,6 +106,9 @@ You have a license under Apache-2.0 to modify and improve this software with att
 #[actix_rt::main]
 async fn main() {
     CryptoProvider::install_default(rustls::crypto::aws_lc_rs::default_provider()).unwrap();
+    unsafe {
+        openssl_probe::init_openssl_env_vars();
+    }
 
     let opts = RelayerOpts::parse();
     if !opts.agree {

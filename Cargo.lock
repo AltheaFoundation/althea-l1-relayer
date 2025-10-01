@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "althea-l1-relayer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -264,6 +264,7 @@ dependencies = [
  "log",
  "num-traits",
  "openssl",
+ "openssl-probe",
  "rustls",
  "serde",
  "web30",
@@ -1422,6 +1423,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "openssl-probe"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
 name = "openssl-src"
