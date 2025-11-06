@@ -6,7 +6,7 @@ use clarity::{
     Address, PrivateKey, Transaction, Uint256, abi::encode_call, utils::display_uint256_as_address,
 };
 use log::{debug, error, info, trace};
-use num_traits::ToPrimitive;
+use num_traits::{ToPrimitive, Zero};
 use rustls::crypto::CryptoProvider;
 use serde::{Deserialize, Serialize};
 use std::{net::ToSocketAddrs, str::FromStr, thread::sleep, time::Duration};
@@ -16,9 +16,13 @@ use web30::{
     types::{Data, SendTxOption, TransactionRequest},
 };
 
+use crate::rewards::check_for_potential_claims;
+
 static OX_100_ADDRESS: &str = "0x0000000000000000000000000000000000000100";
 static OX_200_ADDRESS: &str = "0x0000000000000000000000000000000000000200";
 pub const RELAYING_SERVICE_ROOT: &str = "orchestrator";
+
+pub mod rewards;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GaslessTransaction {
@@ -76,6 +80,23 @@ pub struct RelayerOpts {
 
     #[arg(
         long,
+        // address of the iFi dex rewards contract on Althea L1, use explorer.althea.link to verify
+        default_value = "0xd263DC98dEc57828e26F69bA8687281BA5D052E0",
+        value_name = "REWARDS_CONTRACT_ADDRESS"
+    )]
+    pub rewards_contract_address: String,
+
+    #[arg(
+        long,
+        // How many blocks to search back in the history to find potential claims, these are de_duplicated but the logs
+        // query is one giant request so the value can't be too high or the node may reject it
+        default_value = "1_000_000",
+        value_name = "REWARDS_SEARCH_BLOCK_RANGE"
+    )]
+    pub rewards_search_block_range: u64,
+
+    #[arg(
+        long,
         default_value = "info",
         value_name = "LOG_LEVEL",
         help = "Set the logging level (e.g., info, debug, error)"
@@ -125,6 +146,8 @@ async fn main() {
 
     let contract_address =
         Address::from_str(&opts.contract_address).expect("Invalid contract address");
+    let rewards_contract_address = Address::from_str(&opts.rewards_contract_address)
+        .expect("Invalid rewards contract address");
 
     info!("Starting Ambient transaction relayer");
     info!("Orchestrator URLs: {:?}", opts.transaction_api_url);
@@ -157,6 +180,112 @@ async fn main() {
             .await
             {
                 error!("Error processing pending transactions from {orchestrator_url}: {e}");
+            }
+        }
+
+        // Check for rewards claiming opportunities
+        let latest_block = web3
+            .eth_block_number()
+            .await
+            .expect("Failed to fetch latest block number");
+        let search_range = Uint256::from(opts.rewards_search_block_range);
+        let from_block = if latest_block > search_range {
+            latest_block - search_range
+        } else {
+            Uint256::zero()
+        };
+        match check_for_potential_claims(
+            &web3,
+            &opts.rewards_contract_address,
+            from_block,
+            latest_block,
+        )
+        .await
+        {
+            Ok(opportunities) => {
+                info!(
+                    "Found {} potential claim opportunities",
+                    opportunities.len()
+                );
+                for opportunity in opportunities.iter() {
+                    match rewards::check_for_profitable_pending_rewards(
+                        &web3,
+                        rewards_contract_address,
+                        private_key.to_address(),
+                        &opportunity,
+                        web3.eth_gas_price()
+                            .await
+                            .expect("Failed to fetch gas price"),
+                        &opts.price_api_url,
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            info!(
+                                "Profitable pending rewards found for user {}, pool {:?}, token {}",
+                                opportunity.user_address,
+                                opportunity.pool_id,
+                                opportunity.token_address
+                            );
+                            rewards::claim_rewards_for_user(
+                                &web3,
+                                rewards_contract_address,
+                                private_key,
+                                &opportunity,
+                            )
+                            .await;
+                        }
+                        Ok(false) => {
+                            info!(
+                                "No profitable pending rewards for user {}, pool {:?}, token {}",
+                                opportunity.user_address,
+                                opportunity.pool_id,
+                                opportunity.token_address
+                            );
+                        }
+                        Err(e) => {
+                            error!("Error checking pending rewards: {e}");
+                        }
+                    }
+                }
+                // check if we need to re-register for any of the opportunities
+                for opportunity in opportunities {
+                    // currently disabled to avoid griefing attacks
+                    match rewards::check_if_user_needs_registration(
+                        &web3,
+                        rewards_contract_address,
+                        private_key.to_address(),
+                        &opportunity,
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            info!(
+                                "User {} needs to re-register for rewards, submitting registration",
+                                opportunity.user_address
+                            );
+                            rewards::register_user_for_rewards(
+                                &web3,
+                                rewards_contract_address,
+                                private_key,
+                                &opportunity,
+                            )
+                            .await;
+                        }
+                        Ok(false) => {
+                            info!(
+                                "User {} does not need to re-register for rewards",
+                                opportunity.user_address
+                            );
+                        }
+                        Err(e) => {
+                            error!("Error checking re-registration need: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Error checking for potential claims: {e}");
             }
         }
 
@@ -262,31 +391,31 @@ async fn process_pending_transactions(
 }
 
 /// Estimates if a transaction is profitable to relay based on the current gas price and the transaction's conditions.
-async fn estimate_if_transaction_is_profitable(
+pub async fn estimate_if_transaction_is_profitable(
     tip: Uint256,
     tip_token: Address,
     gas_used: Uint256,
     gas_price: Uint256,
     price_api_url: &str,
-) -> bool {
+) -> Result<bool, Box<dyn std::error::Error>> {
     let gas_estimate = gas_used * gas_price;
     let value = match fetch_value_in_gas_token(price_api_url, tip_token, tip).await {
         Ok(value) => value,
         Err(e) => {
             error!("Failed to fetch tip value in gas token, skipping until the next loop: {e}");
-            return false;
+            return Err(e);
         }
     };
     // 10% profit margin
     let gas_estimate = gas_estimate + gas_estimate / 10u8.into();
     if value > gas_estimate {
         info!("Transaction is profitable: tip value {value} > gas estimate {gas_estimate}");
-        true
+        Ok(true)
     } else {
         info!(
             "Transaction is not profitable Gas Price: {gas_price} Gas Amount {gas_used} tip value {value} <= gas estimate {gas_estimate}"
         );
-        false
+        Ok(false)
     }
 }
 
@@ -362,7 +491,7 @@ async fn relay_transaction(
         Err(e) => return Err(e.into()),
     };
 
-    if estimate_if_transaction_is_profitable(
+    match estimate_if_transaction_is_profitable(
         tip_amount,
         tip_token,
         gas_used,
@@ -371,10 +500,17 @@ async fn relay_transaction(
     )
     .await
     {
-        trace!("Transaction is profitable, proceeding to send");
-    } else {
-        info!("Transaction is not profitable, skipping");
-        return Ok(None);
+        Ok(true) => {
+            trace!("Transaction is profitable, proceeding to send");
+        }
+        Ok(false) => {
+            info!("Transaction is not profitable, skipping");
+            return Ok(None);
+        }
+        Err(e) => {
+            error!("Failed to determine profitability: {e}");
+            return Err(e);
+        }
     }
 
     trace!("Submitting transaction...");
