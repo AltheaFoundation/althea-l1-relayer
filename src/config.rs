@@ -47,7 +47,7 @@ pub struct RelayerOpts {
         default_value = "https://rpc.althea.zone:8545",
         value_name = "ALTHEA_EVM_RPC"
     )]
-    pub alhtea_evm_rpc: String,
+    pub althea_evm_rpc: String,
 
     /// Time between polling cycles in seconds
     #[arg(long, default_value = "5", value_name = "POLL_INTERVAL")]
@@ -68,7 +68,7 @@ pub struct RelayerOpts {
     /// Address of the iFi DEX rewards contract on Althea L1
     #[arg(
         long,
-        default_value = "0xd263DC98dEc57828e26F69bA8687281BA5D052E0",
+        default_value = "0xB44aF36b02C07d22319bF4dC989dAedFB30FCa43",
         value_name = "REWARDS_CONTRACT_ADDRESS"
     )]
     pub rewards_contract_address: String,
@@ -76,7 +76,7 @@ pub struct RelayerOpts {
     /// Historical block range to search for reward claim opportunities
     #[arg(
         long,
-        default_value = "1000000",
+        default_value = "10000",
         value_name = "REWARDS_SEARCH_BLOCK_RANGE",
         help = "How many blocks to search back in the history to find potential claims"
     )]
@@ -121,11 +121,11 @@ pub struct RelayerOpts {
     /// Whether to automatically re-register users for rewards when needed
     #[arg(
         long,
-        default_value = "true",
-        value_name = "AUTO_REREGISTER",
+        default_value = "false",
+        value_name = "NO_AUTO_REREGISTER",
         help = "Automatically re-register users for rewards when they need it. This is not directly rewarded but helps keep users eligible for future rewards."
     )]
-    pub auto_reregister: bool,
+    pub no_auto_reregister: bool,
 }
 
 impl RelayerOpts {

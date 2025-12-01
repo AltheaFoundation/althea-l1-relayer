@@ -103,13 +103,18 @@ fn parse_event_log(input: Vec<Log>) -> HashSet<ClaimOpportunity> {
         let user_address: Address = Address::from_slice(&log.topics[1][12..]).unwrap();
 
         // Extract pool ID from topic 2
-        let pool_id = Uint256::from_be_bytes(&log.topics[2]).to_be_bytes();
+        let pool_id = log.topics[2].0.clone().try_into();
+        if pool_id.is_err() {
+            log::warn!("Invalid pool ID in log: {:?}", log);
+            continue;
+        }
+        let pool_id = pool_id.unwrap();
 
         // Extract token address from topic 3 (last 20 bytes of 32-byte topic)
         let token_address: Address = Address::from_slice(&log.topics[3][12..]).unwrap();
 
         // Extract concentrated flag from first 32 bytes of data
-        let is_concentrated = !log.data[0..32].is_empty();
+        let is_concentrated = Uint256::from_be_bytes(&log.data) != Uint256::default();
 
         opportunities.insert(ClaimOpportunity {
             user_address,
@@ -352,10 +357,10 @@ pub async fn check_for_profitable_pending_rewards(
     let tip_call_data = encode_call(
         GET_POTENTIAL_TIP_FUNCTION_SIGNATURE,
         &[
-            AbiToken::Address(opportunity.user_address),
+            opportunity.user_address.into(),
             AbiToken::Bytes(opportunity.pool_id.to_vec()),
-            AbiToken::Address(opportunity.token_address),
-            AbiToken::Bool(opportunity.concentrated),
+            opportunity.token_address.into(),
+            opportunity.concentrated.into(),
         ],
     )
     .unwrap();
@@ -379,10 +384,10 @@ pub async fn check_for_profitable_pending_rewards(
     let claim_call_data = encode_call(
         CLAIM_REWARDS_FUNCTION_SIGNATURE,
         &[
-            AbiToken::Address(opportunity.user_address),
+            opportunity.user_address.into(),
             AbiToken::Bytes(opportunity.pool_id.to_vec()),
-            AbiToken::Address(opportunity.token_address),
-            AbiToken::Bool(opportunity.concentrated),
+            opportunity.token_address.into(),
+            opportunity.concentrated.into(),
         ],
     )
     .unwrap();

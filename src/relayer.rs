@@ -39,8 +39,8 @@ pub async fn process_pending_transactions(
     price_api_url: &str,
     profit_margin_percent: u8,
 ) -> Result<(), RelayerError> {
-    info!(
-        "Fetching pending transactions from {}/{}/ pending",
+    log::debug!(
+        "Fetching pending transactions from {}/{}/pending",
         orchestrator_url, RELAYING_SERVICE_ROOT
     );
 
