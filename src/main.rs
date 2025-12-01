@@ -55,7 +55,7 @@ async fn main() {
 /// Initializes the relayer with configuration and starts the main processing loop
 async fn initialize_and_run(opts: RelayerOpts) -> Result<(), RelayerError> {
     // Initialize Web3 client
-    let web3 = Web3::new(&opts.alhtea_evm_rpc, Duration::from_secs(opts.timeout));
+    let web3 = Web3::new(&opts.althea_evm_rpc, Duration::from_secs(opts.timeout));
 
     // Parse configuration
     let private_key = opts.parse_private_key()?;
@@ -84,7 +84,7 @@ async fn display_startup_info(
 ) -> Result<(), RelayerError> {
     info!("Starting Ambient transaction relayer");
     info!("Orchestrator URLs: {:?}", opts.transaction_api_url);
-    info!("Ethereum RPC: {}", opts.alhtea_evm_rpc);
+    info!("Ethereum RPC: {}", opts.althea_evm_rpc);
     info!("Contract Address: {}", opts.dex_contract_address);
     info!(
         "Rewards Contract Address: {}",
@@ -93,7 +93,7 @@ async fn display_startup_info(
     info!("Poll interval: {} seconds", opts.poll_interval);
     info!("Relayer address: {}", private_key.to_address());
     info!("Profit margin: {}%", opts.profit_margin);
-    info!("Auto re-register users: {}", opts.auto_reregister);
+    info!("Auto re-register users: {}", !opts.no_auto_reregister);
 
     // Fetch and display relayer balance
     let balance = web3
@@ -210,7 +210,7 @@ async fn process_rewards(
         }
     };
 
-    info!(
+    log::debug!(
         "Found {} potential claim opportunities",
         opportunities.len()
     );
@@ -228,7 +228,7 @@ async fn process_rewards(
     }
 
     // Check for re-registration needs (if auto-reregistration is enabled)
-    if opts.auto_reregister {
+    if !opts.no_auto_reregister {
         for opportunity in opportunities {
             check_reregistration_need(web3, rewards_contract_address, private_key, &opportunity)
                 .await;
@@ -281,8 +281,8 @@ async fn process_single_reward_opportunity(
             .await;
         }
         Ok(false) => {
-            info!(
-                "No profitable pending rewards for user {}, pool {:?}, token {}",
+            log::debug!(
+                "No profitable pending rewards for user {}, pool {:02x?}, token {}",
                 opportunity.user_address, opportunity.pool_id, opportunity.token_address
             );
         }
